@@ -5,37 +5,32 @@ import torch
 from PIL import Image
 from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
-current_dir = os.path.dirname(os.path.abspath(__file__))
-model_path = os.path.join(current_dir, "model_trocr")
 class TrOCRDigitReader:
     """
-    TrOCR 数字识别类：专门针对学号场景进行了优化
+    TrOCR 数字识别类：还原为联网加载模式
     """
-    def __init__(self, model_name=None, device=None):
-        # 初始化处理器和模型
-        # 如果没有传入路径，默认使用本地的 model_path
-        target_path = model_name if model_name else model_path
+    def __init__(self, model_name="microsoft/trocr-base-printed", device=None):
+        # 1. 直接使用官方 ID 进行联网加载
+        print(f"正在从 Hugging Face 联网加载/校验模型: {model_name}")
         
-        print(f"正在从本地加载模型: {target_path}")
-        self.processor = TrOCRProcessor.from_pretrained(target_path)
-        self.model = VisionEncoderDecoderModel.from_pretrained(target_path)
+        # 这里会检查本地 .cache 是否有更新，如果有网络会尝试同步
         self.processor = TrOCRProcessor.from_pretrained(model_name)
         self.model = VisionEncoderDecoderModel.from_pretrained(model_name)
+        
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model.to(self.device)
         self.model.eval()
-        self.expected_len = 10 # 设定学号预期长度
+        self.expected_len = 10 
         
-        # 提取数字 Token ID 列表，用于约束模型输出
+        # 提取数字 Token ID 列表 (保持不变...)
         tokenizer = self.processor.tokenizer
         self.allowed_digit_token_ids = set()
         for d in "0123456789":
             ids = tokenizer.encode(d, add_special_tokens=False)
             for tid in ids: self.allowed_digit_token_ids.add(int(tid))
-        # 加上起始和结束符
+        
         for sid in (self.model.config.decoder_start_token_id, self.model.config.eos_token_id):
             if sid is not None: self.allowed_digit_token_ids.add(int(sid))
-
     def readtext(self, image_np):
         """
         核心识别函数：接收 OpenCV 图片，输出学号字符串和置信度
